@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Crypto Candlestick Chart</title>
+<script src="https://cdn.jsdelivr.net/npm/lightweight-charts@4.0.0/dist/lightweight-charts.standalone.production.js"></script>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: #0a0a0a;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    flex-direction: column;
+    height: 100vh;
+    font-family: Arial, sans-serif;
+    color: #d4af37;
+  }
+  #chart-container {
+    position: relative;
+    width: 95%;
+    max-width: 1000px;
+    aspect-ratio: 16/9;
+    background: #0a0a0a;
+    border-radius: 16px;
+    padding: 8px;
+    box-shadow:
+      0 0 25px rgba(212,175,55,0.3),
+      inset 0 0 12px rgba(212,175,55,0.15),
+      0 0 0 2px rgba(212,175,55,0.2);
+  }
+  #chart-header {
+    text-align: center;
+    margin-bottom: 12px;
+    line-height: 1.4;
+  }
+  #chart-header h2 {
+    margin: 0;
+    font-size: 1.6rem;
+    color: #d4af37;
+  }
+  #chart-header p {
+    margin: 0;
+    font-size: 1rem;
+    color: #bfa84b;
+  }
+  #chart {
+    width: 100%;
+    height: 100%;
+  }
+  /* واترمارک لوگوی گوشه بالا */
+  #watermark-logo {
+    position: absolute;
+    top: 12px;
+    right: 14%; /* فاصله بیشتر از راست */
+    z-index: 10;
+    opacity: 0.4;
+    transition: opacity 0.3s ease;
+    pointer-events: auto;
+    width: clamp(60px, 8vw, 90px); /* اندازه ریسپانسیو */
+  }
+  #watermark-logo:hover {
+    opacity: 1;
+  }
+  #watermark-logo img {
+    width: 100%;
+    height: auto;
+  }
+  /* واترمارک متنی پایین وسط */
+  #watermark-text {
+    position: absolute;
+    bottom: 8px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 0.85rem;
+    color: rgba(212,175,55,0.6);
+    z-index: 10;
+    pointer-events: none;
+  }
+</style>
+</head>
+<body>
+
+<div id="chart-header">
+  <h2 id="chart-symbol">Loading...</h2>
+  <p>
+    <span id="chart-price">--</span> USDT &nbsp;|&nbsp; Interval:
+    <span id="chart-interval">--</span>
+  </p>
+  <p><time id="chart-time">--:--:-- UTC</time></p>
+</div>
+
+<div id="chart-container">
+  <div id="chart"></div>
+  <!-- واترمارک لوگوی ریسپانسیو -->
+  <a id="watermark-logo" href="https://example.com" target="_blank" rel="noopener noreferrer">
+    <img src="https://iili.io/FiFM6eS.png" alt="Watermark Logo" />
+  </a>
+  <!-- واترمارک متنی پایین وسط -->
+  <div id="watermark-text">t.me/EternalMagazine</div>
+</div>
+
+<script>
+  const params = new URLSearchParams(window.location.search);
+  let symbol = params.get('symbol') || 'BTC';
+  symbol = symbol.toUpperCase();
+
+  let interval = params.get('interval') || '1h';
+  interval = interval.toLowerCase();
+
+  const intervalMap = {
+    '15m': '15m',
+    '30m': '30m',
+    '1h': '1h',
+    '4h': '4h',
+    '1d': '1d',
+    '1w': '1w',
+    '1m': '1M'
+  };
+
+  if (!intervalMap[interval]) interval = '1h';
+  const apiInterval = intervalMap[interval];
+
+  const chartSymbol = document.getElementById('chart-symbol');
+  const chartPrice = document.getElementById('chart-price');
+  const chartInterval = document.getElementById('chart-interval');
+  const chartTimeHeader = document.getElementById('chart-time');
+
+  chartSymbol.textContent = `${symbol}/USDT`;
+  chartInterval.textContent = interval;
+
+  const chartDiv = document.getElementById('chart');
+  const chart = LightweightCharts.createChart(chartDiv, {
+    layout: { background: { type: 'solid', color: '#0a0a0a' }, textColor: '#d4af37' },
+    grid: {
+      vertLines: { color: '#3f2e0077' },
+      horzLines: { color: '#3f2e0077' }
+    },
+    rightPriceScale: { borderColor: '#bfa84b' },
+    timeScale: { borderColor: '#bfa84b', timeVisible: true, secondsVisible: false }
+  });
+
+  const candlestickSeries = chart.addCandlestickSeries({
+    upColor: '#d4af37',
+    downColor: '#ff4f81',
+    wickUpColor: '#d4af37',
+    wickDownColor: '#ff4f81'
+  });
+
+  async function fetchCandles() {
+    const url = `https://api.binance.com/api/v3/klines?symbol=${symbol}USDT&interval=${apiInterval}&limit=150`;
+    try {
+      const res = await fetch(url);
+      if (!res.ok) throw new Error('Bad Response');
+      const data = await res.json();
+      if (!Array.isArray(data) || data.length === 0) throw new Error('Invalid Symbol');
+
+      const candles = data.map(d => ({
+        time: Math.floor(d[0] / 1000),
+        open: parseFloat(d[1]),
+        high: parseFloat(d[2]),
+        low: parseFloat(d[3]),
+        close: parseFloat(d[4])
+      }));
+      candlestickSeries.setData(candles);
+
+      const lastClose = candles[candles.length - 1]?.close || '--';
+      chartPrice.textContent = lastClose;
+
+      const lastCloseTime = data[data.length - 1][6];
+      chartTimeHeader.textContent = new Date(lastCloseTime).toUTCString();
+
+    } catch (e) {
+      chartSymbol.textContent = 'Invalid Symbol';
+      chartPrice.textContent = '--';
+      chartTimeHeader.textContent = '--';
+    }
+  }
+
+  fetchCandles();
+  setInterval(fetchCandles, 4000);
+</script>
+
+</body>
+</html>
